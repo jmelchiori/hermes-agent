@@ -1,76 +1,287 @@
-#
-# docker-compose.yml for Hermes Agent
-#
-# Usage:
-#   HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d
-#
-# Set HERMES_UID / HERMES_GID to the host user that owns ~/.hermes so
-# files created inside the container stay readable/writable on the host.
-# The s6-overlay stage2 hook remaps the internal `hermes` user to these
-# values via usermod/groupmod; each supervised service then drops to that
-# user via `s6-setuidgid`.
-#
-# Security notes:
-#   - The dashboard service binds to 127.0.0.1 by default. It stores API
-#     keys; exposing it on LAN without auth is unsafe. If you want remote
-#     access, use an SSH tunnel or put it behind a reverse proxy that
-#     adds authentication — do NOT pass --insecure --host 0.0.0.0.
-#   - If you override entrypoint, keep `/init` as the first command in
-#     the chain (or let docker use the image's default ENTRYPOINT,
-#     which is `["/init", "/opt/hermes/docker/main-wrapper.sh"]`).
-#     `/init` is s6-overlay's PID 1 — it runs the cont-init.d scripts
-#     (chown, profile reconcile, dashboard toggle) and sets up the
-#     supervision tree before any service starts. Bypassing it skips
-#     all of that setup and the gateway will not work correctly.
-#   - The gateway's API server is off unless you uncomment API_SERVER_KEY
-#     and API_SERVER_HOST. See docs/user-guide/api-server.md before doing
-#     this on an internet-facing host.
-#
 services:
-  gateway:
-    build: .
-    image: hermes-agent
-    container_name: hermes
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ~/.hermes:/opt/data
+  tailscale:
+    image: ghcr.io/tailscale/tailscale:stable
+    container_name: hermes-webui-stack-tailscale
+    hostname: ${TS_HOSTNAME}
     environment:
-      - HERMES_UID=${HERMES_UID:-10000}
-      - HERMES_GID=${HERMES_GID:-10000}
-      # To expose the OpenAI-compatible API server beyond localhost,
-      # uncomment BOTH lines (API_SERVER_KEY is mandatory for auth):
-      # - API_SERVER_HOST=0.0.0.0
-      # - API_SERVER_KEY=${API_SERVER_KEY}
-      # Microsoft Teams — uncomment and fill in to enable Teams gateway.
-      # Register your bot at https://dev.botframework.com/ to get these values.
-      # - TEAMS_CLIENT_ID=${TEAMS_CLIENT_ID}
-      # - TEAMS_CLIENT_SECRET=${TEAMS_CLIENT_SECRET}
-      # - TEAMS_TENANT_ID=${TEAMS_TENANT_ID}
-      # - TEAMS_ALLOWED_USERS=${TEAMS_ALLOWED_USERS}
-      # - TEAMS_PORT=${TEAMS_PORT:-3978}
-      # Google Chat — uncomment and fill in to enable the Google Chat gateway.
-      # See website/docs/user-guide/messaging/google_chat.md for the full setup.
-      # The SA JSON path must point to a file mounted into the container —
-      # add a volume entry above (e.g. ``- ~/.hermes/google-chat-sa.json:/secrets/google-chat-sa.json:ro``)
-      # then set GOOGLE_CHAT_SERVICE_ACCOUNT_JSON to that mount path.
-      # - GOOGLE_CHAT_PROJECT_ID=${GOOGLE_CHAT_PROJECT_ID}
-      # - GOOGLE_CHAT_SUBSCRIPTION_NAME=${GOOGLE_CHAT_SUBSCRIPTION_NAME}
-      # - GOOGLE_CHAT_SERVICE_ACCOUNT_JSON=${GOOGLE_CHAT_SERVICE_ACCOUNT_JSON}
-      # - GOOGLE_CHAT_ALLOWED_USERS=${GOOGLE_CHAT_ALLOWED_USERS}
-    command: ["gateway", "run"]
-
-  dashboard:
-    image: hermes-agent
-    container_name: hermes-dashboard
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: ${TS_HOSTNAME}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_AUTH_ONCE: 'true'
+      TS_USERSPACE: 'false'
+      TS_ENABLE_HEALTH_CHECK: 'true'
+      TS_LOCAL_ADDR_PORT: 127.0.0.1:9002
+      TS_SERVE_CONFIG: /config/serve-config.json
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+    - ./tailscale-state:/var/lib/tailscale
+    - ./config:/config
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+    - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
+    - /dev/net/tun:/dev/net/tun
+    cap_add:
+    - NET_ADMIN
+    - NET_RAW
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q -T 2 -O - http://127.0.0.1:9002/healthz >/dev/null 2>&1
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
-    network_mode: host
+  hermes-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile.webui
+      args:
+      - WEBUI_VERSION=${WEBUI_VERSION:-}
+    image: local/hermes-webui-stack-webui:latest
+    container_name: hermes-webui-stack-webui
+    network_mode: service:tailscale
     depends_on:
-      - gateway
-    volumes:
-      - ~/.hermes:/opt/data
+      tailscale:
+        condition: service_healthy
     environment:
-      - HERMES_UID=${HERMES_UID:-10000}
-      - HERMES_GID=${HERMES_GID:-10000}
-    # Localhost-only. For remote access, tunnel via `ssh -L 9119:localhost:9119`.
-    command: ["dashboard", "--host", "127.0.0.1", "--no-open"]
+      WANTED_UID: ${WANTED_UID}
+      WANTED_GID: ${WANTED_GID}
+      HERMES_WEBUI_HOST: 0.0.0.0
+      HERMES_WEBUI_PORT: '8787'
+      HERMES_WEBUI_STATE_DIR: /home/hermeswebui/.hermes/webui-mvp
+      HERMES_WEBUI_DEFAULT_WORKSPACE: /workspace
+      HERMES_WEBUI_PASSWORD: ${HERMES_WEBUI_PASSWORD}
+      HERMES_WEBUI_AGENT_DIR: /workspace/hermes-agent-private
+      PYTHONPATH: /workspace/hermes-agent-private
+      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      GH_CONFIG_DIR: /home/hermeswebui/.hermes/.config/gh
+      TZ: ${TZ:-America/Chicago}
+    env_file:
+    - ./config/agenthub-client.env
+    volumes:
+    - ./hermes-home:/home/hermeswebui/.hermes
+    - ./hermes-home/.ssh:/home/hermeswebui/.ssh
+    - ./workspace:/workspace
+    - ./build/hermes-agent-private:/workspace/hermes-agent-private:rw
+    secrets:
+    - agenthub_api_token
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - "python - <<'PY'\nimport urllib.request, sys\ntry:\n    r = urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=5)\n    sys.exit(0 if r.getcode() == 200 else 1)\nexcept Exception:\n    sys.exit(1)\nPY"
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+  hermes-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    image: local/hermes-webui-stack-gateway:latest
+    container_name: hermes-webui-stack-gateway
+    user: ${WANTED_UID}:${WANTED_GID}
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+      hindsight:
+        condition: service_healthy
+      agenthub-api:
+        condition: service_healthy
+    env_file:
+    - ./config/gateway.env
+    - ./config/agenthub-client.env
+    environment:
+      HERMES_HOME: /opt/data
+      HERMES_CONFIG_PATH: /opt/data/config.yaml
+      HOME: /opt/data
+      XDG_STATE_HOME: /opt/data/.local/state
+      GH_CONFIG_DIR: /opt/data/.config/gh
+      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      TZ: ${TZ:-America/Chicago}
+    secrets:
+    - agenthub_api_token
+    working_dir: /workspace
+    command:
+    - gateway
+    - run
+    volumes:
+    - ./hermes-home:/opt/data
+    - ./workspace:/workspace
+    restart: unless-stopped
+  helm:
+    image: local/hermes-webui-stack-gateway:latest
+    container_name: hermes-webui-stack-helm
+    user: ${WANTED_UID}:${WANTED_GID}
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+    environment:
+      HELM_ROOT_PATH: /helm
+      HELM_STACK_MODE: '1'
+      PW_BASE_URL: http://127.0.0.1:7890/helm/
+      HELM_ENV: dev
+      HELM_DB_PATH: /workspace/helm/var/helm.db
+      HELM_HERMES_API_URL: http://127.0.0.1:8648
+      HELM_HERMES_API_KEY: hermes-api-ad3ba5f94b2f0753b526e970a73bf90fc322e5363bce6924
+      HELM_PROFILES_ROOT: /home/hermeswebui/.hermes/profiles
+      HERMES_HOME: /home/hermeswebui/.hermes
+      TZ: ${TZ:-America/Chicago}
+    working_dir: /workspace/helm
+    entrypoint:
+    - /usr/bin/tini
+    - -g
+    - --
+    - /bin/sh
+    - -lc
+    - cd /workspace/helm && exec /opt/hermes/.venv/bin/python -m uvicorn helm.main:app --host 0.0.0.0 --port 7890 --reload --reload-dir /workspace/helm
+    volumes:
+    - ./workspace:/workspace
+    - ./hermes-home:/home/hermeswebui/.hermes
+    secrets:
+    - agenthub_api_token
+    restart: unless-stopped
+  hindsight:
+    image: hindsight-with-st:latest
+    container_name: hermes-webui-stack-hindsight
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+    environment:
+      HINDSIGHT_MODE: local_external
+      HINDSIGHT_API_PORT: '8888'
+      HINDSIGHT_ENABLE_API: 'true'
+      HINDSIGHT_API_HOST: 0.0.0.0
+      HINDSIGHT_API_LLM_API_KEY: sk-5d2be13a7aaa407690bfa72e7e2ae101
+      HINDSIGHT_API_LLM_BASE_URL: https://api.deepseek.com/v1
+      HINDSIGHT_API_LLM_MODEL: deepseek-v4-flash
+      HINDSIGHT_API_LLM_EXTRA_BODY: '{"thinking":{"type":"disabled"}}'
+      HINDSIGHT_API_RERANKER_PROVIDER: local
+      HINDSIGHT_API_REFLECT_MAX_ITERATIONS: '6'
+      HINDSIGHT_API_RERANKER_LOCAL_BUCKET_BATCHING: 'true'
+      HINDSIGHT_API_RERANKER_MAX_CANDIDATES: '150'
+      HINDSIGHT_PG_DATA: /data/pg
+      TZ: ${TZ:-America/Chicago}
+      HSA_OVERRIDE_GFX_VERSION: 11.0.0
+    volumes:
+    - /srv/hindsight-pg0:/home/hindsight/.pg0
+    - ./hindsight/data:/data
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - curl -fsS http://127.0.0.1:8888/health >/dev/null 2>&1 || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    group_add:
+    - '991'
+    - '44'
+    devices:
+    - /dev/kfd:/dev/kfd
+    - /dev/dri:/dev/dri
+  agenthub-postgres:
+    image: postgres:16-alpine
+    container_name: hermes-webui-stack-agenthub-postgres
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: agenthub
+      POSTGRES_USER: agenthub
+      POSTGRES_PASSWORD_FILE: /run/secrets/agenthub_postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: ${TZ:-America/Chicago}
+    command:
+    - postgres
+    - -c
+    - listen_addresses=127.0.0.1
+    - -p
+    - '55432'
+    secrets:
+    - agenthub_postgres_password
+    volumes:
+    - /srv/agenthub-pg0/data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U agenthub -d agenthub -h 127.0.0.1 -p 55432 >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+  agenthub-api:
+    image: local/hermes-webui-stack-gateway:latest
+    container_name: hermes-webui-stack-agenthub-api
+    user: ${WANTED_UID}:${WANTED_GID}
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+      agenthub-postgres:
+        condition: service_healthy
+    entrypoint:
+    - /usr/bin/tini
+    - -g
+    - --
+    - /bin/sh
+    - -lc
+    command:
+    - export AGENTHUB_POSTGRES_DSN="postgresql://agenthub:$(cat /run/secrets/agenthub_postgres_password)@127.0.0.1:55432/agenthub"; export AGENTHUB_API_TOKEN="$(cat /run/secrets/agenthub_api_token)"; exec /opt/hermes/.venv/bin/python scripts/agenthub_api_server.py --host 127.0.0.1 --port 8765 --storage postgres
+    secrets:
+    - agenthub_postgres_password
+    - agenthub_api_token
+    working_dir: /workspace/AgentHub
+    volumes:
+    - ./workspace:/workspace
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - /opt/hermes/.venv/bin/python -c "import urllib.request; token=open('/run/secrets/agenthub_api_token', encoding='utf-8').read().strip(); req=urllib.request.Request('http://127.0.0.1:8765/v1/agents', headers={'Authorization':'Bearer '+token}); urllib.request.urlopen(req, timeout=5).read()"
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+  hermes-dashboard:
+    image: local/hermes-webui-stack-gateway:latest
+    container_name: hermes-webui-stack-dashboard
+    user: "${WANTED_UID}:${WANTED_GID}"
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+    env_file:
+      - ./hermes-home/profiles/infrastructure/.env
+    environment:
+      PYTHONPATH: /workspace/hermes-agent-private
+      PATH: /home/hermeswebui/.hermes/.local/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      TZ: ${TZ:-America/Chicago}
+    working_dir: /workspace
+    command:
+      - dashboard
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "9119"
+      - --insecure
+      - --no-open
+      - --skip-build
+    volumes:
+      - ./hermes-home:/home/hermeswebui/.hermes
+      - ./hermes-home:/opt/data
+      - ./workspace:/workspace
+    restart: unless-stopped
+secrets:
+  agenthub_postgres_password:
+    file: ./config/agenthub-postgres-password
+  agenthub_api_token:
+    file: ./config/agenthub-api-token
