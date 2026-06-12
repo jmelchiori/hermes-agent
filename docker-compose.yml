@@ -262,6 +262,8 @@ services:
     env_file:
       - ./hermes-home/profiles/infrastructure/.env
     environment:
+      HOME: /home/hermeswebui
+      HERMES_HOME: /home/hermeswebui/.hermes
       PYTHONPATH: /workspace/hermes-agent-private
       PATH: /home/hermeswebui/.hermes/.local/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       TZ: ${TZ:-America/Chicago}
