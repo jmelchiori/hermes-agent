@@ -123,3 +123,27 @@ scripts/out/
 # stores the published notes. They are not a build artifact and must never be
 # committed to the repo root. See the hermes-release skill.
 RELEASE_v*.md
+
+# === Stack-specific patterns ===
+# These cover the hermes-webui-stack deployment repo, not the upstream hermes-agent repo.
+
+# Runtime state and generated data
+state/
+hindsight/
+gateway-home/
+workspace/
+obsidian/
+backups
+tailscale-state/
+build/
+
+# Secrets and host-specific config
+config/
+
+# Backup files
+*.bak
+*.bak-*
+*.bak.*
+
+# IDE/editor
+.vscode/

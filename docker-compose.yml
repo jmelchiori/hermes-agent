@@ -50,6 +50,7 @@ services:
       HERMES_WEBUI_HOST: 0.0.0.0
       HERMES_WEBUI_PORT: '8787'
       HERMES_WEBUI_STATE_DIR: /home/hermeswebui/.hermes/webui-mvp
+      HERMES_WEBUI_MODELS_REBUILD_BUDGET: "15"
       HERMES_WEBUI_DEFAULT_WORKSPACE: /workspace
       HERMES_WEBUI_PASSWORD: ${HERMES_WEBUI_PASSWORD}
       HERMES_WEBUI_AGENT_DIR: /workspace/hermes-agent-private
@@ -235,7 +236,7 @@ services:
     - /bin/sh
     - -lc
     command:
-    - export AGENTHUB_POSTGRES_DSN="postgresql://agenthub:$(cat /run/secrets/agenthub_postgres_password)@127.0.0.1:55432/agenthub"; export AGENTHUB_API_TOKEN="$(cat /run/secrets/agenthub_api_token)"; exec /opt/hermes/.venv/bin/python scripts/agenthub_api_server.py --host 127.0.0.1 --port 8765 --storage postgres
+    - export AGENTHUB_POSTGRES_DSN="postgresql://agenthub:$(cat /run/secrets/agenthub_postgres_password)@127.0.0.1:55432/agenthub"; export AGENTHUB_API_TOKEN="$(cat /run/secrets/agenthub_api_token)"; exec /opt/hermes/.venv/bin/python scripts/agenthub_api_server.py --host 127.0.0.1 --port 8765 --storage postgres --contract-progress-dir /workspace/contract-progress
     secrets:
     - agenthub_postgres_password
     - agenthub_api_token
@@ -266,6 +267,7 @@ services:
       HERMES_HOME: /home/hermeswebui/.hermes
       PYTHONPATH: /workspace/hermes-agent-private
       PATH: /home/hermeswebui/.hermes/.local/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_SESSION_TOKEN}
       TZ: ${TZ:-America/Chicago}
     working_dir: /workspace
     command:
