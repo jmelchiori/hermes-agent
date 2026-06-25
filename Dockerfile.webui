@@ -1,0 +1,127 @@
+FROM ghcr.io/nesquena/hermes-webui:latest
+
+USER root
+
+RUN apt-get update &&     apt-get install -y --no-install-recommends git gh openssh-client shellcheck &&     rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (for Helm workspace deps — init script already patches for npm install)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Python dev tools (WebUI runs sessions for all profiles directly)
+RUN pip install --no-cache-dir ruff mypy pylint black isort rope jedi astroid
+
+# rust-analyzer (pre-built binary — no full Rust toolchain needed)
+RUN Arch=$(uname -m) && \
+    case "$Arch" in \
+      x86_64) RA_ARCH="x86_64-unknown-linux-gnu";; \
+      aarch64) RA_ARCH="aarch64-unknown-linux-gnu";; \
+      *) echo "Unsupported arch: $Arch" && exit 1;; \
+    esac && \
+    RA_VERSION=$(curl -fsSL "https://api.github.com/repos/rust-lang/rust-analyzer/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+') && \
+    echo "Installing rust-analyzer $RA_VERSION ($RA_ARCH)" && \
+    curl -fsSL "https://github.com/rust-lang/rust-analyzer/releases/download/${RA_VERSION}/rust-analyzer-${RA_ARCH}.gz" | gunzip > /usr/local/bin/rust-analyzer && \
+    chmod +x /usr/local/bin/rust-analyzer && \
+    rust-analyzer --version
+
+# Fix stale _version.py in upstream image — derive version from image labels
+# so the WebUI settings badge shows the correct version.
+# The base image stores code at /apptoo (copied to /app at runtime by init script).
+ARG WEBUI_VERSION
+RUN python3 - <<'PY'
+import os
+from pathlib import Path
+
+# Upstream image stores code at /apptoo; /app is created at runtime by init script
+version_file = Path('/apptoo/api/_version.py')
+if not version_file.exists():
+    raise SystemExit('_version.py not found')
+
+version = os.environ.get('WEBUI_VERSION', '')
+if not version:
+    # Fallback: try git describe on /apptoo if it's a git repo
+    import subprocess
+    proc = subprocess.run(
+        ['git', 'describe', '--tags', '--always', '--dirty'],
+        cwd='/apptoo', capture_output=True, text=True,
+    )
+    version = proc.stdout.strip() if proc.returncode == 0 else 'unknown'
+
+version_file.write_text(f"__version__ = '{version}'\n")
+print(f'Updated _version.py to {version}')
+PY
+
+# Patch the upstream init script so the WebUI execution host always has croniter.
+# Use a single-line anchor rather than a brittle whole-block replacement.
+RUN python3 - <<'PY'
+from pathlib import Path
+
+path = Path('/hermeswebui_init.bash')
+text = path.read_text()
+
+croniter_line = '  uv pip install croniter --trusted-host pypi.org --trusted-host files.pythonhosted.org'
+anchor = 'uv pip install -U pip setuptools --trusted-host pypi.org --trusted-host files.pythonhosted.org'
+if anchor not in text:
+    raise SystemExit('pip/setuptools anchor not found')
+if croniter_line.strip() not in text:
+    text = text.replace(anchor, anchor + chr(10) + croniter_line, 1)
+
+agent_paths_old = """  _agent_paths=(
+    "/home/hermeswebui/.hermes/hermes-agent"
+    "/opt/hermes"
+  )"""
+agent_paths_new = """  _agent_paths=()
+  if [ -n "${HERMES_WEBUI_AGENT_DIR:-}" ]; then
+    _agent_paths+=("${HERMES_WEBUI_AGENT_DIR}")
+  fi
+  _agent_paths+=(
+    "/home/hermeswebui/.hermes/hermes-agent"
+    "/opt/hermes"
+  )"""
+if agent_paths_old not in text:
+    raise SystemExit('agent path block not found')
+if 'HERMES_WEBUI_AGENT_DIR' not in text:
+    text = text.replace(agent_paths_old, agent_paths_new, 1)
+
+path.write_text(text)
+PY
+
+
+
+# Ensure Helm workspace JS dependencies (ESLint, Playwright) are installed on startup.
+# The Helm code is bind-mounted at /workspace/helm, so node_modules lives on the host.
+# This injects a check into the init script that runs npm install when package.json
+# is newer than node_modules — a fast no-op when packages are current.
+RUN python3 - <<'PY'
+from pathlib import Path
+
+path = Path('/hermeswebui_init.bash')
+text = path.read_text()
+
+npm_block = """# Helm workspace: install JS deps if package.json changed
+if [ -f /workspace/helm/package.json ] && command -v npm >/dev/null 2>&1; then
+  if [ ! -f /workspace/helm/node_modules/.package-lock.json ] || \\
+     [ /workspace/helm/package.json -nt /workspace/helm/node_modules/.package-lock.json ]; then
+    echo "Helm workspace: running npm install for JS dependencies..."
+    (cd /workspace/helm && npm install --prefer-offline 2>&1) || echo "Warning: npm install failed, ESLint/Playwright may be unavailable"
+  fi
+fi
+"""
+
+if 'npm install --prefer-offline' in text:
+    print('Already patched')
+else:
+    # Insert before the first 'echo' or 'cd' that starts the app
+    # Safe anchor: after the last 'export' or env setup, before app start
+    anchor = 'echo "Starting Hermes WebUI"'
+    if anchor in text:
+        text = text.replace(anchor, npm_block + anchor, 1)
+    else:
+        # Fallback: append near the end, before the last line
+        lines = text.rstrip().split('\n')
+        lines.insert(-1, npm_block.rstrip())
+        text = '\n'.join(lines) + '\n'
+    path.write_text(text)
+    print('Patched init script with npm install check')
+PY

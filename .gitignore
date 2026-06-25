@@ -147,3 +147,13 @@ config/
 
 # IDE/editor
 .vscode/
+
+# Backups and archives
+*.bak*
+*.orig
+.archived/
+scripts/*.bak*/
+scripts/*.bak_old
+*.archived
+scripts/hermes-autonomous-upgrade.sh
+scripts/stack_upgrade_v2.py

@@ -1,0 +1,42 @@
+# Thin wrapper over upstream Hermes image — adds dev/ops tools + LSP servers.
+# No source code changes, no overlay. Just packages.
+# Rebuild: docker build -t local/hermes-webui-stack-gateway-dev:latest \
+#           -f Dockerfile.gateway-dev .
+
+FROM nousresearch/hermes-agent:main
+
+# GitHub CLI + shellcheck (for bash-language-server diagnostics)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gh shellcheck && \
+    rm -rf /var/lib/apt/lists/*
+
+# Python dev tools — installed into the Hermes venv using uv
+# (uv is already in the upstream image at /usr/local/bin/uv)
+RUN uv pip install --python /opt/hermes/.venv/bin/python --no-cache-dir \
+      ruff \
+      mypy \
+      pylint \
+      black \
+      isort \
+      rope \
+      jedi \
+      astroid
+
+# Symlink dev tools + hermes CLI to /usr/local/bin for runtime PATH visibility
+# (s6 init overrides ENV PATH, so symlinks are more reliable than PATH)
+RUN for tool in ruff mypy pylint black isort hermes; do \
+      [ -f /opt/hermes/.venv/bin/$tool ] && ln -sf /opt/hermes/.venv/bin/$tool /usr/local/bin/$tool || true; \
+    done
+
+# rust-analyzer (pre-built binary — no full Rust toolchain needed)
+RUN Arch=$(uname -m) && \
+    case "$Arch" in \
+      x86_64) RA_ARCH="x86_64-unknown-linux-gnu";; \
+      aarch64) RA_ARCH="aarch64-unknown-linux-gnu";; \
+      *) echo "Unsupported arch: $Arch" && exit 1;; \
+    esac && \
+    RA_VERSION=$(curl -fsSL "https://api.github.com/repos/rust-lang/rust-analyzer/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+') && \
+    echo "Installing rust-analyzer $RA_VERSION ($RA_ARCH)" && \
+    curl -fsSL "https://github.com/rust-lang/rust-analyzer/releases/download/${RA_VERSION}/rust-analyzer-${RA_ARCH}.gz" | gunzip > /usr/local/bin/rust-analyzer && \
+    chmod +x /usr/local/bin/rust-analyzer && \
+    rust-analyzer --version

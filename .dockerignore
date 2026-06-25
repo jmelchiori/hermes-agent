@@ -63,3 +63,9 @@ data/
 # Compose/profile runtime state (bind-mounted; avoid ownership/secret issues)
 hermes-config/
 runtime/
+# Stack bind-mounted runtime/code trees: never send to image build context
+hermes-home/
+workspace/
+backups/
+tailscale-state*/
+hindsight/data/

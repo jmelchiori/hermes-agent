@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Hermes skill-maintenance report lane daily
+
+[Timer]
+OnCalendar=*-*-* 05:05:00 America/Chicago
+RandomizedDelaySec=10m
+Persistent=true
+Unit=hermes-webui-stack-skill-maintenance-report.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Hermes WebUI stack skill-maintenance report lane
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=jmelchiori
+Group=jmelchiori
+SupplementaryGroups=docker
+Environment=HOME=/home/jmelchiori
+WorkingDirectory=/home/jmelchiori/docker-compose/hermes-webui-stack
+ExecStart=/home/jmelchiori/docker-compose/hermes-webui-stack/scripts/hermes-skill-maintenance.sh report
+TimeoutStartSec=1800
+Nice=5

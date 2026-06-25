@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily autonomous Hermes WebUI stack upgrade timer
+
+[Timer]
+OnCalendar=*-*-* 04:20:00 America/Chicago
+Persistent=true
+RandomizedDelaySec=10m
+Unit=hermes-webui-stack-autonomous-upgrade.service
+
+[Install]
+WantedBy=timers.target

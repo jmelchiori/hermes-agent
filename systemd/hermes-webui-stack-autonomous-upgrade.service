@@ -1,0 +1,16 @@
+[Unit]
+Description=Autonomous Hermes WebUI stack upgrade
+Documentation=file:/home/jmelchiori/docker-compose/hermes-webui-stack/docs/stack-upgrade-v2.md
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=jmelchiori
+Group=jmelchiori
+SupplementaryGroups=docker
+Environment=HOME=/home/jmelchiori
+WorkingDirectory=/home/jmelchiori/docker-compose/hermes-webui-stack
+ExecStart=/home/jmelchiori/docker-compose/hermes-webui-stack/scripts/hermes-autonomous-upgrade.sh --apply
+TimeoutStartSec=7200
+Nice=5
