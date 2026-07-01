@@ -7,6 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STACK_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$STACK_DIR"
 
+# Include Caddy overlay in all compose commands
+# Caddy shares Tailscale's network namespace via network_mode: service:tailscale
+export COMPOSE_FILE="docker-compose.yml:docker-compose.caddy.yml"
+
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "=== Stack Update: $TIMESTAMP ==="
 
@@ -20,7 +24,7 @@ if [ "$ROOT_PCT" -gt 90 ]; then
 fi
 
 # 2. Capture pre-update state
-PRE_HASH=$(docker compose config --images 2>/dev/null | sort | xargs docker images -q 2>/dev/null | sort | sha256sum | cut -c1-12)
+PRE_HASH=$(docker compose config --images 2>/dev/null | sort | xargs -n 1 docker images -q 2>/dev/null | sort | sha256sum | cut -c1-12)
 PRE_CONTAINERS=$(docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null | sort)
 
 # 3. Pull upstream images
@@ -47,10 +51,24 @@ for entry in "${LOCAL_IMAGES[@]}"; do
 done
 
 # 5. Check if anything actually changed
-POST_HASH=$(docker compose config --images 2>/dev/null | sort | xargs docker images -q 2>/dev/null | sort | sha256sum | cut -c1-12)
+POST_HASH=$(docker compose config --images 2>/dev/null | sort | xargs -n 1 docker images -q 2>/dev/null | sort | sha256sum | cut -c1-12)
 if [ "$PRE_HASH" = "$POST_HASH" ]; then
-    echo "No image changes detected. Nothing to apply."
-    echo "=== Update complete (no changes) ==="
+    echo "No image changes detected."
+    # Still check Caddy namespace alignment (Tailscale may have been recreated out-of-band)
+    echo "--- Caddy namespace check (no-update path) ---"
+    TS_ID=$(docker inspect hermes-webui-stack-tailscale --format '{{.Id}}' 2>/dev/null || true)
+    CADDY_NET=$(docker inspect hermes-webui-stack-caddy --format '{{.HostConfig.NetworkMode}}' 2>/dev/null || true)
+    if [ -n "$TS_ID" ] && [ "$CADDY_NET" != "container:$TS_ID" ]; then
+        echo "  WARNING: Caddy namespace mismatch detected even without image changes."
+        echo "  Expected: container:$TS_ID"
+        echo "  Actual:   $CADDY_NET"
+        echo "  Reconciling Caddy..."
+        docker compose up -d --force-recreate --no-deps caddy 2>&1
+        sleep 5
+    else
+        echo "  Caddy namespace OK."
+    fi
+    echo "=== Update complete (no image changes) ==="
     exit 0
 fi
 echo "Image changes detected (pre=$PRE_HASH post=$POST_HASH). Applying..."
@@ -58,6 +76,22 @@ echo "Image changes detected (pre=$PRE_HASH post=$POST_HASH). Applying..."
 # 6. Apply (only recreates containers whose image/config changed)
 echo "--- Applying changes ---"
 docker compose up -d 2>&1
+
+# 6b. Reconcile Caddy namespace after apply
+# Caddy shares Tailscale's network via network_mode: service:tailscale.
+# If Tailscale was recreated (new container ID), Caddy must follow.
+echo "--- Caddy namespace reconciliation ---"
+TS_ID=$(docker inspect hermes-webui-stack-tailscale --format '{{.Id}}' 2>/dev/null || true)
+CADDY_NET=$(docker inspect hermes-webui-stack-caddy --format '{{.HostConfig.NetworkMode}}' 2>/dev/null || true)
+if [ -n "$TS_ID" ] && [ "$CADDY_NET" != "container:$TS_ID" ]; then
+    echo "  Caddy namespace mismatch! Reconciling..."
+    echo "  Expected: container:$TS_ID"
+    echo "  Actual:   $CADDY_NET"
+    docker compose up -d --force-recreate --no-deps caddy 2>&1
+    sleep 5
+else
+    echo "  Caddy namespace OK: $CADDY_NET"
+fi
 
 # 7. Wait for containers to settle
 echo "--- Waiting for health checks (15s) ---"
@@ -79,7 +113,8 @@ echo "--- HTTP smoke tests ---"
 for check in \
     "webui:http://127.0.0.1:8787/" \
     "dashboard:http://127.0.0.1:9119/" \
-    "helm:http://127.0.0.1:7890/helm/"; do
+    "helm:http://127.0.0.1:7890/helm/" \
+    "caddy-healthz:http://127.0.0.1:9120/healthz"; do
     svc="${check%%:*}"
     url="${check##*:}"
     code=$(docker exec hermes-webui-stack-tailscale wget -q -O /dev/null -S "$url" 2>&1 | grep 'HTTP/' | tail -1 | awk '{print $2}' || echo "ERR")

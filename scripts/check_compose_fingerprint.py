@@ -29,6 +29,8 @@ from pathlib import Path
 WATCHED_FILES = [
     "docker-compose.yml",
     "docker-compose.override.yml",
+    "docker-compose.caddy.yml",
+    "config/Caddyfile",
     "scripts/generate_profile_gateway_compose.py",
     "Dockerfile.gateway",
 ]

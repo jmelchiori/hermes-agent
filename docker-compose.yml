@@ -23,6 +23,8 @@ services:
     cap_add:
     - NET_ADMIN
     - NET_RAW
+    networks:
+    - hermes-internal
     healthcheck:
       test:
       - CMD-SHELL
@@ -40,7 +42,8 @@ services:
       - WEBUI_VERSION=${WEBUI_VERSION:-}
     image: local/hermes-webui-stack-webui:latest
     container_name: hermes-webui-stack-webui
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -55,7 +58,7 @@ services:
       HERMES_WEBUI_PASSWORD: ${HERMES_WEBUI_PASSWORD}
       HERMES_WEBUI_AGENT_DIR: /workspace/hermes-agent-private
       PYTHONPATH: /workspace/hermes-agent-private
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       GH_CONFIG_DIR: /home/hermeswebui/.hermes/.config/gh
       TZ: ${TZ:-America/Chicago}
     env_file:
@@ -81,7 +84,8 @@ services:
   hermes-gateway:
     image: nousresearch/hermes-agent:main
     container_name: hermes-webui-stack-gateway
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -98,7 +102,7 @@ services:
       HOME: /opt/data
       XDG_STATE_HOME: /opt/data/.local/state
       GH_CONFIG_DIR: /opt/data/.config/gh
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_UID: ${WANTED_UID}
       HERMES_GID: ${WANTED_GID}
@@ -117,17 +121,18 @@ services:
   helm:
     image: local/hermes-webui-stack-helm:latest
     container_name: hermes-webui-stack-helm
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
     environment:
       HELM_ROOT_PATH: /helm
       HELM_STACK_MODE: '1'
-      PW_BASE_URL: http://127.0.0.1:7890/helm/
+      PW_BASE_URL: http://helm:7890/helm/
       HELM_ENV: dev
       HELM_DB_PATH: /workspace/helm/var/helm.db
-      HELM_HERMES_API_URL: http://127.0.0.1:8648
+      HELM_HERMES_API_URL: http://hermes-gateway-personal:8648
       HELM_HERMES_API_KEY: hermes-api-ad3ba5f94b2f0753b526e970a73bf90fc322e5363bce6924
       HELM_PROFILES_ROOT: /home/hermeswebui/.hermes/profiles
       HERMES_HOME: /home/hermeswebui/.hermes
@@ -151,7 +156,8 @@ services:
   hindsight:
     image: hindsight-with-st:latest
     container_name: hermes-webui-stack-hindsight
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -193,7 +199,8 @@ services:
   agenthub-postgres:
     image: postgres:16-alpine
     container_name: hermes-webui-stack-agenthub-postgres
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -206,7 +213,7 @@ services:
     command:
     - postgres
     - -c
-    - listen_addresses=127.0.0.1
+    - listen_addresses=*
     - -p
     - '55432'
     secrets:
@@ -225,7 +232,8 @@ services:
   agenthub-api:
     image: local/hermes-webui-stack-agenthub-api:latest
     container_name: hermes-webui-stack-agenthub-api
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -234,9 +242,9 @@ services:
     command:
     - /bin/sh
     - -lc
-    - export AGENTHUB_POSTGRES_DSN="postgresql://agenthub:$$(cat /run/secrets/agenthub_postgres_password)@127.0.0.1:55432/agenthub";
+    - export AGENTHUB_POSTGRES_DSN="postgresql://agenthub:$$(cat /run/secrets/agenthub_postgres_password)@agenthub-postgres:55432/agenthub";
       export AGENTHUB_API_TOKEN="$$(cat /run/secrets/agenthub_api_token)"; exec python
-      scripts/agenthub_api_server.py --host 127.0.0.1 --port 8765 --storage postgres
+      scripts/agenthub_api_server.py --host 0.0.0.0 --port 8765 --storage postgres
       --contract-progress-dir /workspace/contract-progress
     secrets:
     - agenthub_postgres_password
@@ -262,7 +270,8 @@ services:
   hermes-dashboard:
     image: local/hermes-webui-stack-gateway-dev:latest
     container_name: hermes-webui-stack-dashboard
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -274,6 +283,7 @@ services:
       PYTHONPATH: /workspace/hermes-agent-private
       PATH: /home/hermeswebui/.hermes/.local/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_SESSION_TOKEN}
+      HERMES_DASHBOARD_FORCE_PREFIX: /agent
       TZ: ${TZ:-America/Chicago}
     working_dir: /workspace
     command:
@@ -293,6 +303,12 @@ services:
     user: ${WANTED_UID}:${WANTED_GID}
     entrypoint:
     - /opt/hermes/.venv/bin/hermes
+
+networks:
+  hermes-internal:
+    driver: bridge
+    name: hermes-internal
+
 secrets:
   agenthub_postgres_password:
     file: ./config/agenthub-postgres-password

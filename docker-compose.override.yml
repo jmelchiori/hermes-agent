@@ -2,7 +2,8 @@ services:
   hermes-gateway-buyer:
     image: nousresearch/hermes-agent:main
     container_name: hermes-webui-stack-gateway-buyer
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -23,7 +24,7 @@ services:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: '8643'
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
@@ -44,7 +45,8 @@ services:
   hermes-gateway-developer:
     image: local/hermes-webui-stack-gateway-dev:latest
     container_name: hermes-webui-stack-gateway-developer
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -65,7 +67,7 @@ services:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: '8644'
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
@@ -86,7 +88,8 @@ services:
   hermes-gateway-family:
     image: nousresearch/hermes-agent:main
     container_name: hermes-webui-stack-gateway-family
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -107,7 +110,7 @@ services:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: '8645'
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
@@ -128,7 +131,8 @@ services:
   hermes-gateway-financial:
     image: nousresearch/hermes-agent:main
     container_name: hermes-webui-stack-gateway-financial
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -149,7 +153,7 @@ services:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: '8646'
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
@@ -170,7 +174,8 @@ services:
   hermes-gateway-infrastructure:
     image: local/hermes-webui-stack-gateway-dev:latest
     container_name: hermes-webui-stack-gateway-infrastructure
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -191,7 +196,7 @@ services:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: '8647'
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
@@ -212,7 +217,8 @@ services:
   hermes-gateway-personal:
     image: local/hermes-webui-stack-gateway-dev:latest
     container_name: hermes-webui-stack-gateway-personal
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -233,7 +239,7 @@ services:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: '8648'
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
@@ -254,7 +260,8 @@ services:
   hermes-gateway-trading:
     image: nousresearch/hermes-agent:main
     container_name: hermes-webui-stack-gateway-trading
-    network_mode: service:tailscale
+    networks:
+    - hermes-internal
     depends_on:
       tailscale:
         condition: service_healthy
@@ -275,7 +282,7 @@ services:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: '8649'
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
@@ -295,4 +302,4 @@ services:
     - -lc
   hermes-dashboard:
     environment:
-      HINDSIGHT_API_URL: http://127.0.0.1:8888
+      HINDSIGHT_API_URL: http://hindsight:8888
