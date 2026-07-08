@@ -28,6 +28,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -71,6 +72,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -114,6 +116,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -157,6 +160,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -200,6 +204,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -243,6 +248,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -286,6 +292,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_GATEWAY_NO_SUPERVISE: '1'
       AGENT_BROWSER_EXECUTABLE_PATH: /opt/hermes/.playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -302,4 +309,5 @@ services:
     - -lc
   hermes-dashboard:
     environment:
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
       HINDSIGHT_API_URL: http://hindsight:8888

@@ -106,6 +106,7 @@ services:
       TZ: ${TZ:-America/Chicago}
       HERMES_UID: ${WANTED_UID}
       HERMES_GID: ${WANTED_GID}
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     secrets:
     - agenthub_api_token
     working_dir: /workspace
@@ -132,8 +133,10 @@ services:
       PW_BASE_URL: http://helm:7890/helm/
       HELM_ENV: dev
       HELM_DB_PATH: /workspace/helm/var/helm.db
+      HELM_AGENTHUB_API_URL: http://agenthub-api:8765
       HELM_HERMES_API_URL: http://hermes-gateway-personal:8648
       HELM_HERMES_API_KEY: hermes-api-ad3ba5f94b2f0753b526e970a73bf90fc322e5363bce6924
+      HELM_DASHBOARD_API_KEY: ${HERMES_DASHBOARD_SESSION_TOKEN}
       HELM_PROFILES_ROOT: /home/hermeswebui/.hermes/profiles
       HERMES_HOME: /home/hermeswebui/.hermes
       TZ: ${TZ:-America/Chicago}
@@ -285,6 +288,7 @@ services:
       HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_SESSION_TOKEN}
       HERMES_DASHBOARD_FORCE_PREFIX: /agent
       TZ: ${TZ:-America/Chicago}
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
     working_dir: /workspace
     command:
     - dashboard
