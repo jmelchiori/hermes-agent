@@ -38,8 +38,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.webui
-      args:
-      - WEBUI_VERSION=${WEBUI_VERSION:-}
     image: local/hermes-webui-stack-webui:latest
     container_name: hermes-webui-stack-webui
     networks:
@@ -56,8 +54,6 @@ services:
       HERMES_WEBUI_MODELS_REBUILD_BUDGET: '15'
       HERMES_WEBUI_DEFAULT_WORKSPACE: /workspace
       HERMES_WEBUI_PASSWORD: ${HERMES_WEBUI_PASSWORD}
-      HERMES_WEBUI_AGENT_DIR: /workspace/hermes-agent-private
-      PYTHONPATH: /workspace/hermes-agent-private
       HINDSIGHT_API_URL: http://hindsight:8888
       GH_CONFIG_DIR: /home/hermeswebui/.hermes/.config/gh
       TZ: ${TZ:-America/Chicago}
@@ -67,7 +63,11 @@ services:
     - ./hermes-home:/home/hermeswebui/.hermes
     - ./hermes-home/.ssh:/home/hermeswebui/.ssh
     - ./workspace:/workspace
-    - ./build/hermes-agent-private:/workspace/hermes-agent-private:rw
+    # The shared home still contains a legacy Hermes Agent 0.9.0 source tree.
+    # Hide that path so upstream WebUI falls through to the current official
+    # Agent source bundled at /opt/hermes by Dockerfile.webui.
+    tmpfs:
+    - /home/hermeswebui/.hermes/hermes-agent:ro,mode=0555,uid=${WANTED_UID},gid=${WANTED_GID}
     secrets:
     - agenthub_api_token
     healthcheck:
@@ -283,7 +283,6 @@ services:
     environment:
       HOME: /home/hermeswebui
       HERMES_HOME: /home/hermeswebui/.hermes
-      PYTHONPATH: /workspace/hermes-agent-private
       PATH: /home/hermeswebui/.hermes/.local/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_SESSION_TOKEN}
       HERMES_DASHBOARD_FORCE_PREFIX: /agent

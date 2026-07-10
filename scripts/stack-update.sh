@@ -9,7 +9,7 @@ cd "$STACK_DIR"
 
 # Include Caddy overlay in all compose commands
 # Caddy shares Tailscale's network namespace via network_mode: service:tailscale
-export COMPOSE_FILE="docker-compose.yml:docker-compose.caddy.yml"
+export COMPOSE_FILE="docker-compose.yml:docker-compose.caddy.yml:docker-compose.override.yml"
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "=== Stack Update: $TIMESTAMP ==="
@@ -97,18 +97,45 @@ fi
 echo "--- Waiting for health checks (15s) ---"
 sleep 15
 
-# 8. Verify
-echo "--- Post-apply verification ---"
+# 8. Verify Hermes Agent runtime contract before shallow HTTP probes.
+# WebUI runs Hermes in its own Python 3.12 venv; it must match the gateway image.
+echo "--- Hermes Agent version contract ---"
+WEBUI_AGENT_VERSION=""
+GATEWAY_AGENT_VERSION=""
+for _ in $(seq 1 36); do
+    WEBUI_AGENT_VERSION=$(docker exec hermes-webui-stack-webui \
+        /app/venv/bin/python -c 'import importlib.metadata as m; print(m.version("hermes-agent"))' \
+        2>/dev/null || true)
+    GATEWAY_AGENT_VERSION=$(docker exec hermes-webui-stack-gateway-infrastructure \
+        /opt/hermes/.venv/bin/python3 -c 'import importlib.metadata as m; print(m.version("hermes-agent"))' \
+        2>/dev/null || true)
+    if [ -n "$WEBUI_AGENT_VERSION" ] && [ -n "$GATEWAY_AGENT_VERSION" ]; then
+        break
+    fi
+    sleep 5
+done
+echo "  webui:  ${WEBUI_AGENT_VERSION:-unavailable}"
+echo "  gateway: ${GATEWAY_AGENT_VERSION:-unavailable}"
+if [ -z "$WEBUI_AGENT_VERSION" ] || [ -z "$GATEWAY_AGENT_VERSION" ]; then
+    echo "BLOCKED: could not resolve Hermes Agent versions after 180s"
+    exit 1
+fi
+if [ "$WEBUI_AGENT_VERSION" != "$GATEWAY_AGENT_VERSION" ]; then
+    echo "BLOCKED: Hermes Agent version skew (webui=$WEBUI_AGENT_VERSION gateway=$GATEWAY_AGENT_VERSION)"
+    exit 1
+fi
+
+# 9. Show container state
 docker compose ps --format 'table {{.Name}}\t{{.Status}}' 2>/dev/null
 
-# 9. Check for unhealthy containers
+# 10. Check for unhealthy containers
 UNHEALTHY=$(docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null | grep -ci 'unhealthy\|restarting\|exited' || true)
 if [ "$UNHEALTHY" -gt 0 ]; then
     echo "WARNING: $UNHEALTHY container(s) unhealthy/restarting/exited"
     docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null | grep -i 'unhealthy\|restarting\|exited'
 fi
 
-# 10. Quick HTTP smoke test
+# 11. Quick HTTP smoke test
 echo "--- HTTP smoke tests ---"
 for check in \
     "webui:http://127.0.0.1:8787/" \
