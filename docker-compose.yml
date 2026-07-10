@@ -137,6 +137,8 @@ services:
       HELM_HERMES_API_URL: http://hermes-gateway-personal:8648
       HELM_HERMES_API_KEY: hermes-api-ad3ba5f94b2f0753b526e970a73bf90fc322e5363bce6924
       HELM_DASHBOARD_API_KEY: ${HERMES_DASHBOARD_SESSION_TOKEN}
+      HELM_DASHBOARD_USERNAME: josh
+      HELM_DASHBOARD_WS_URL: ws://hermes-dashboard:9119/api/ws
       HELM_PROFILES_ROOT: /home/hermeswebui/.hermes/profiles
       HERMES_HOME: /home/hermeswebui/.hermes
       TZ: ${TZ:-America/Chicago}
@@ -280,28 +282,40 @@ services:
         condition: service_healthy
     env_file:
     - ./hermes-home/profiles/infrastructure/.env
+    - ./config/dashboard-auth.env
     environment:
       HOME: /home/hermeswebui
       HERMES_HOME: /home/hermeswebui/.hermes
       PATH: /home/hermeswebui/.hermes/.local/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_SESSION_TOKEN}
       HERMES_DASHBOARD_FORCE_PREFIX: /agent
+      TERMINAL_CWD: /workspace
       TZ: ${TZ:-America/Chicago}
       HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace:/tmp:/home/hermeswebui/.hermes
-    working_dir: /workspace
+    # Keep the Hermes process outside the user workspace so a top-level
+    # /workspace/tools package cannot shadow the official Agent runtime.
+    # TERMINAL_CWD preserves /workspace as the agent/tool working directory.
+    working_dir: /opt/hermes
     command:
     - dashboard
     - --host
     - 0.0.0.0
     - --port
     - '9119'
-    - --insecure
     - --no-open
     - --skip-build
     volumes:
     - ./hermes-home:/home/hermeswebui/.hermes
     - ./hermes-home:/opt/data
     - ./workspace:/workspace
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - /opt/hermes/.venv/bin/python3 -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:9119/api/status', timeout=5)); assert d.get('auth_required') is True and 'basic' in d.get('auth_providers', [])"
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
     user: ${WANTED_UID}:${WANTED_GID}
     entrypoint:
