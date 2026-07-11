@@ -41,7 +41,7 @@ LOCAL_IMAGES=(
 )
 for entry in "${LOCAL_IMAGES[@]}"; do
     dockerfile="${entry%%:*}"
-    image="${entry##*:}"
+    image="${entry#*:}"
     if [ -f "$dockerfile" ]; then
         echo "  Building $image from $dockerfile..."
         docker build -t "$image" -f "$dockerfile" . 2>&1 | tail -3
