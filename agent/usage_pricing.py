@@ -534,6 +534,33 @@ _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
         source="official_docs_snapshot",
         pricing_version="minimax-pricing-2026-04",
     ),
+    # Xiaomi MiMo — overseas API (api.xiaomimimo.com) pricing effective
+    # 2026-05-27. The /models endpoint is auth-locked, so these must live
+    # in the snapshot rather than being fetched at runtime.
+    # Source: https://mimo.mi.com/docs/price/pay-as-you-go
+    # (corroborated by OpenRouter, TypingMind, and Artificial Analysis listings)
+    (
+        "xiaomi",
+        "mimo-v2.5-pro",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("0.435"),
+        output_cost_per_million=Decimal("0.87"),
+        cache_read_cost_per_million=Decimal("0.036"),
+        source="official_docs_snapshot",
+        source_url="https://mimo.mi.com/docs/price/pay-as-you-go",
+        pricing_version="xiaomi-mimo-pricing-2026-05-27",
+    ),
+    (
+        "xiaomi",
+        "mimo-v2.5",
+    ): PricingEntry(
+        input_cost_per_million=Decimal("0.14"),
+        output_cost_per_million=Decimal("0.28"),
+        cache_read_cost_per_million=Decimal("0.014"),
+        source="official_docs_snapshot",
+        source_url="https://mimo.mi.com/docs/price/pay-as-you-go",
+        pricing_version="xiaomi-mimo-pricing-2026-05-27",
+    ),
 }
 
 
@@ -579,6 +606,8 @@ def resolve_billing_route(
         return BillingRoute(provider="openai", model=model.split("/")[-1], base_url=base_url or "", billing_mode="official_docs_snapshot")
     if provider_name in {"minimax", "minimax-cn"}:
         return BillingRoute(provider=provider_name, model=model.split("/")[-1], base_url=base_url or "", billing_mode="official_docs_snapshot")
+    if provider_name == "xiaomi" or base_url_host_matches(base_url or "", "xiaomimimo.com"):
+        return BillingRoute(provider="xiaomi", model=model.split("/")[-1], base_url=base_url or "", billing_mode="official_docs_snapshot")
     if provider_name in {"custom", "local"} or (base and "localhost" in base):
         return BillingRoute(provider=provider_name or "custom", model=model, base_url=base_url or "", billing_mode="unknown")
     return BillingRoute(provider=provider_name or "unknown", model=model.split("/")[-1] if model else "", base_url=base_url or "", billing_mode="unknown")

@@ -250,3 +250,122 @@ def test_deepseek_v4_pro_estimate_usage_cost():
     assert result.amount_usd is not None
     # 1M input × $1.74/M + 500K output × $3.48/M = $1.74 + $1.74 = $3.48
     assert float(result.amount_usd) == 3.48
+
+
+def test_xiaomi_mimo_v2_5_pro_pricing_entry_exists():
+    """Regression test: xiaomi/mimo-v2.5-pro must have a pricing entry.
+
+    Before this fix, cron sessions using xiaomi/mimo-v2.5-pro showed
+    cost_status=unknown and estimated_cost_usd=0.0 even though tokens
+    were tracked. The xiaomimimo.com /models endpoint is auth-locked so
+    pricing must live in _OFFICIAL_DOCS_PRICING.
+    """
+    entry = get_pricing_entry(
+        "mimo-v2.5-pro",
+        provider="xiaomi",
+        base_url="https://api.xiaomimimo.com/v1",
+    )
+
+    assert entry is not None
+    assert entry.input_cost_per_million is not None
+    assert entry.output_cost_per_million is not None
+    assert float(entry.input_cost_per_million) == 0.435
+    assert float(entry.output_cost_per_million) == 0.87
+    assert float(entry.cache_read_cost_per_million) == 0.036
+
+
+def test_xiaomi_mimo_v2_5_pro_estimate_usage_cost():
+    """Ensure xiaomi/mimo-v2.5-pro sessions get a dollar estimate, not unknown."""
+    result = estimate_usage_cost(
+        "mimo-v2.5-pro",
+        CanonicalUsage(input_tokens=1000000, output_tokens=500000),
+        provider="xiaomi",
+        base_url="https://api.xiaomimimo.com/v1",
+    )
+
+    assert result.status == "estimated"
+    assert result.amount_usd is not None
+    # 1M input × $0.435/M + 500K output × $0.87/M = $0.435 + $0.435 = $0.87
+    assert float(result.amount_usd) == 0.87
+
+
+def test_xiaomi_route_handler_sets_official_docs_snapshot():
+    """The xiaomi provider must resolve to billing_mode=official_docs_snapshot,
+    not the default 'unknown', so _lookup_official_docs_pricing is reached."""
+    from agent.usage_pricing import resolve_billing_route
+
+    route = resolve_billing_route(
+        "mimo-v2.5-pro",
+        provider="xiaomi",
+        base_url="https://api.xiaomimimo.com/v1",
+    )
+
+    assert route.provider == "xiaomi"
+    assert route.billing_mode == "official_docs_snapshot"
+
+
+def test_neuralwatt_per_million_pricing_extraction():
+    """NeuralWatt /models endpoint exposes pricing under metadata.pricing
+    with *_per_million key names. _extract_pricing must recognize this format.
+
+    Before this fix, the pricing data was silently dropped because
+    _extract_pricing only recognized DeepInfra's {input_tokens,
+    output_tokens, cache_read_tokens} keys, not {input_per_million,
+    output_per_million, cached_input_per_million}.
+    """
+    from agent.model_metadata import _extract_pricing
+
+    # Simulate the NeuralWatt /models response format
+    payload = {
+        "id": "glm-5.2",
+        "metadata": {
+            "pricing": {
+                "input_per_million": 1.45,
+                "output_per_million": 4.5,
+                "cached_input_per_million": 0.145,
+                "cached_output_per_million": None,
+                "currency": "USD",
+                "pricing_tbd": False,
+            }
+        },
+    }
+
+    result = _extract_pricing(payload)
+
+    assert "prompt" in result
+    assert "completion" in result
+    assert "cache_read" in result
+    # Per-token values = $/M ÷ 1_000_000
+    assert float(result["prompt"]) == 1.45 / 1_000_000
+    assert float(result["completion"]) == 4.5 / 1_000_000
+    assert float(result["cache_read"]) == 0.145 / 1_000_000
+
+
+def test_neuralwatt_glm_5_2_estimate_usage_cost(monkeypatch):
+    """End-to-end: NeuralWatt glm-5.2 session should get a dollar estimate
+    when the endpoint metadata returns *_per_million pricing."""
+    monkeypatch.setattr(
+        "agent.usage_pricing.fetch_endpoint_model_metadata",
+        lambda base_url, api_key="": {
+            "glm-5.2": {
+                "pricing": {
+                    "prompt": str(1.45 / 1_000_000),
+                    "completion": str(4.5 / 1_000_000),
+                    "cache_read": str(0.145 / 1_000_000),
+                }
+            }
+        },
+    )
+
+    result = estimate_usage_cost(
+        "glm-5.2",
+        CanonicalUsage(input_tokens=10000, output_tokens=2000),
+        provider="custom",
+        base_url="https://api.neuralwatt.com/v1",
+    )
+
+    assert result.status == "estimated"
+    assert result.amount_usd is not None
+    # 10K input × $1.45/M + 2K output × $4.50/M
+    expected = 10000 * 1.45 / 1_000_000 + 2000 * 4.50 / 1_000_000
+    assert abs(float(result.amount_usd) - expected) < 0.0001

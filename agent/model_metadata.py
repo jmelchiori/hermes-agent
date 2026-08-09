@@ -649,6 +649,27 @@ def _extract_pricing(payload: Dict[str, Any]) -> Dict[str, Any]:
             pricing["completion"] = str(float(novita_output) / 10_000 / 1_000_000)
         return pricing
 
+    # Some OpenAI-compatible endpoints (e.g. NeuralWatt) ship pricing under
+    # ``metadata.pricing`` with $/M-token values using *_per_million key
+    # names (input_per_million, output_per_million, cached_input_per_million).
+    # Convert to per-token strings so the generic cost machinery consumes
+    # them through the same path as OpenRouter / OpenAI / DeepInfra.
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None
+    per_million_pricing = metadata.get("pricing") if metadata else None
+    if isinstance(per_million_pricing, dict) and any(
+        k in per_million_pricing
+        for k in ("input_per_million", "output_per_million", "cached_input_per_million")
+    ):
+        result: Dict[str, Any] = {}
+        if per_million_pricing.get("input_per_million") is not None:
+            result["prompt"] = str(float(per_million_pricing["input_per_million"]) / 1_000_000)
+        if per_million_pricing.get("output_per_million") is not None:
+            result["completion"] = str(float(per_million_pricing["output_per_million"]) / 1_000_000)
+        if per_million_pricing.get("cached_input_per_million") is not None:
+            result["cache_read"] = str(float(per_million_pricing["cached_input_per_million"]) / 1_000_000)
+        if result:
+            return result
+
     alias_map = {
         "prompt": ("prompt", "input", "input_cost_per_token", "prompt_token_cost"),
         "completion": ("completion", "output", "output_cost_per_token", "completion_token_cost"),
