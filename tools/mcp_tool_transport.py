@@ -4,6 +4,7 @@ protocol negotiation and initial tool discovery. Split from tools/mcp_tool.py.""
 
 import logging
 import asyncio
+import inspect
 import os
 import urllib.parse
 import urllib.request
@@ -589,11 +590,18 @@ class MCPServerTransportMixin:
         @asynccontextmanager
         async def _owned_client_streams():  # the SDK skips cleanup when http_client is provided
             async with _build_client(**client_kwargs) as http_client:
-                # Without max_sse_event_size the SDK parses each event against httpx2's 1 MiB default,
-                # a tighter second cap under our wire cap: a large tools/list or tool result (an
-                # editor screenshot) failed outright.
-                async with _core.streamable_http_client(url, http_client=http_client,
-                                                        max_sse_event_size=_MCP_HTTP_MAX_BODY_BYTES) as streams:
+                # Newer SDKs can raise httpx2's 1 MiB per-event default to our wire cap
+                # (large tools/list / screenshots). Older SDKs lack the keyword: retain
+                # their default rather than breaking every Streamable HTTP connection.
+                # Inspect before calling; an internal TypeError must not trigger a retry.
+                stream_kwargs: dict = {"http_client": http_client}
+                try:
+                    parameters = inspect.signature(_core.streamable_http_client).parameters
+                except (TypeError, ValueError):
+                    parameters = {}
+                if "max_sse_event_size" in parameters:
+                    stream_kwargs["max_sse_event_size"] = _MCP_HTTP_MAX_BODY_BYTES
+                async with _core.streamable_http_client(url, **stream_kwargs) as streams:
                     yield streams
         return _owned_client_streams()
 
